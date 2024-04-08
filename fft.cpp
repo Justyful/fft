@@ -85,6 +85,7 @@ int main() {
 		diff[i] = x[i] - y[i];
 		error += std::norm(diff[i]);
 	}
+	
 	cout << sqrt(error) << endl;
 
 	delete[] x;
