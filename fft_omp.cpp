@@ -40,21 +40,23 @@ void DFT(complex<double>*& x, int const size) {
 	x = ans;
 }
 
+int stop_rec = 1;
+
 void FFT(complex<double>*& x, int const size) {
-	if (size <= 1) {
-		// complex<double>* help = new complex<double>[size];
-		// for (int i = 0; i < size; i++) {
-		// 	help[i] = x[i];
-		// }
-		// complex<double> exp;
-		// double a = -TWOPI / size;
-		// for (int i = 0; i < size; i++) {
-		// 	x[i] = complex<double>(0, 0);
-		// 	for (int j = 0; j < size; j++) {
-		// 		exp = std::polar<double>(1, 1.0 * a * i * j);
-		// 		x[i] += help[j] * exp;
-		// 	}
-		// }
+	if (size == stop_rec) {
+		complex<double>* help = new complex<double>[size];
+		for (int i = 0; i < size; i++) {
+			help[i] = x[i];
+		}
+		complex<double> exp;
+		double a = -TWOPI / size;
+		for (int i = 0; i < size; i++) {
+			x[i] = complex<double>(0, 0);
+			for (int j = 0; j < size; j++) {
+				exp = std::polar<double>(1, 1.0 * a * i * j);
+				x[i] += help[j] * exp;
+			}
+		}
 		return;
 	}
 
@@ -66,8 +68,11 @@ void FFT(complex<double>*& x, int const size) {
 		even[i] = x[2*i];
 		odd[i] = x[2*i + 1];
 	}
+#pragma omp task 
 	FFT(even, halfsize);
+#pragma omp task 
 	FFT(odd, halfsize);
+#pragma omp taskwait
 	complex<double> w;
 	double a = -TWOPI / size;
 	for (int i = 0; i < halfsize; i++) {
@@ -103,20 +108,27 @@ void fill_vec(complex<double>* x, int size) {
 }
 
 int main() {
-	//int N;
+	// int N;
+	int n_threads;
 	// cout << "size = ";
 	// cin >> N;
+	// cout << "n_threads = ";
+	// cin >> n_threads;
+	// cout << "stop_iter = ";
+	// cin >> stop_rec;
 
 	std::ofstream file;
-	file.open("data_fft.txt");
+	file.open("data_fft_omp.txt");
 	// 2^10 ... 2^27 = 134217728
 	file << "SIZE       |DFT_TIME   |FFT_TIME   |L2_ERROR    |C_ERROR" << endl;
 	for (int N = 1024; N < 134217729; N *= 2) {
+		stop_rec = 32;
+		n_threads = 2000;
 		complex<double>* x = new complex<double>[N];
 		complex<double>* y = new complex<double>[N];
 
 		fill_vec(x, N);
-		auto start = std::chrono::high_resolution_clock::now();;
+		auto start = std::chrono::high_resolution_clock::now();
 		if (N < 65537) {
 			DFT(x, y, N);
 		}
@@ -124,7 +136,12 @@ int main() {
 		std::chrono::duration<double> duration1 = end - start;
 
 		start = std::chrono::high_resolution_clock::now();
+
+#pragma omp parallel num_threads(n_threads)
+{
+#pragma omp single
 		FFT(x, N);
+}
 		end = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double> duration2 = end - start;
 
@@ -145,12 +162,13 @@ int main() {
 		}
 		file << std::setw(10) << std::left << N << " |";
 		file << std::setw(10) << std::left << duration1.count() << " |";
-		file << std::setw(10) << std::left << duration2.count()<< " |"; 
-		file << std::setw(11) << std::left << sqrt(l2_error) << " |";
+		file << std::setw(10) << std::left << duration2.count()<< " |";
+		file << std::setw(11) << std::left << sqrt(l2_error) << " |" ;
 		file << std::setw(10) << std::left << c_error << endl;
 		delete[] x;
 		delete[] y;
 	}
+	file << endl << "OMP: n_threads = 2000, stop = 32" << endl;
 	file.close();
 	return 0;
 }
